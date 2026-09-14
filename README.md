@@ -113,10 +113,11 @@ Postman 测试集合位于 `postman/` 目录，可直接导入使用。
 
 | 组件 | 版本 | 说明 |
 |------|------|------|
-| Spring Boot | 3.5.7 | 基础框架 |
-| Spring Cloud | 2025.0.0 | 适配 Boot 3.5.x |
-| Spring Cloud Alibaba | 2025.0.0.0 | 适配 Spring Cloud 2025.0.0 |
-| Nacos Server | 3.0.3 | 注册中心 + 配置中心 |
+| Java | 17 (LTS) | 基础运行环境 |
+| Spring Boot | 3.2.4 | 基础框架 |
+| Spring Cloud | 2023.0.1 | 适配 Boot 3.2.x |
+| Spring Cloud Alibaba | 2023.0.1.0 | 适配 Spring Cloud 2023.0.1 |
+| Nacos Server | 2.3.2 | 注册中心 + 配置中心 |
 
 #### 启动 Nacos
 
