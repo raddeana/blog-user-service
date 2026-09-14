@@ -1,0 +1,71 @@
+# ============================================================
+# Nacos 配置模板 - blog-service-dev.yaml
+# ============================================================
+# 使用方法：
+#   1. 启动 Nacos 后访问控制台 http://localhost:8848/nacos（账号/密码 nacos/nacos）
+#   2. 配置管理 → 配置列表 → 右上角 "+" 创建配置
+#   3. Data ID:  blog-service-dev.yaml
+#      Group:     DEFAULT_GROUP
+#   4. 将本文件内容粘贴到配置内容框，按需修改后发布
+#   5. application.yml 中 spring.config.import 会自动拉取此配置
+# ============================================================
+
+spring:
+  # 数据源（Druid 连接池）
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/blog_db?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password:
+
+  # SQL 初始化（启动时自动执行幂等建表脚本）
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+  # Druid 连接池调优（可选）
+  druid:
+    initial-size: 5
+    min-idle: 5
+    max-active: 20
+    max-wait: 60000
+    time-between-eviction-runs-millis: 60000
+    min-evictable-idle-time-millis: 300000
+    validation-query: SELECT 1
+    test-while-idle: true
+    test-on-borrow: false
+    test-on-return: false
+
+# MyBatis Plus 配置
+mybatis-plus:
+  configuration:
+    # 下划线表名 ↔ 驼峰字段自动映射
+    map-underscore-to-camel-case: true
+    # SQL 日志（开发环境开启，生产关闭）
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      # 主键自增策略
+      id-type: auto
+      # 逻辑删除（如需启用，取消注释并加 @TableLogic 注解）
+      # logic-delete-field: deleted
+      # logic-delete-value: 1
+      # logic-not-delete-value: 0
+
+# 日志级别（可动态调整无需重启）
+logging:
+  level:
+    root: INFO
+    com.blog.services: DEBUG
+    com.alibaba.nacos: WARN
+
+# ========== 自定义业务配置示例 ==========
+# 配合 NacosConfigDemo.java 使用，修改后自动动态刷新
+blog:
+  datasource:
+    remark: 本地开发环境主库
+  feature:
+    user-register-enabled: true
+    max-roles-per-user: 10
