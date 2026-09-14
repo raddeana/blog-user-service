@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: blog-service
+  profiles:
+    active: dev
+  # Nacos 配置中心：从 Nacos 拉取 blog-service-dev.yaml（optional 表示 Nacos 不可用时也不阻断启动）
+  config:
+    import:
+      - optional:nacos:blog-service-${spring.profiles.active}.yaml
+  cloud:
+    nacos:
+      # Nacos 服务端地址（注册与配置共用）
+      server-addr: localhost:8848
+      # 注册发现
+      discovery:
+        namespace: public
+        group: DEFAULT_GROUP
+      # 配置中心
+      config:
+        namespace: public
+        group: DEFAULT_GROUP
+        file-extension: yaml
+        enabled: true
+  # 数据源兜底（优先用 Nacos 配置中心管理，此处作为本地默认值）
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/blog_db?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password:
+  # SQL 初始化（启动自动建表，幂等脚本）
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+server:
+  port: 8081
+
+# MyBatis Plus 配置
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto

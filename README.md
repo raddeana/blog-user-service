@@ -76,7 +76,7 @@ mvn test -Dtest=UserServiceImplTest,RoleServiceImplTest,PermissionServiceImplTes
 
 ### 启动服务
 
-编译并启动（默认端口 8080）：
+编译并启动（默认端口 8081）：
 
 ```bash
 mvn spring-boot:run
@@ -105,12 +105,79 @@ curl -X POST http://localhost:8080/api/roles/1/permissions \
 
 Postman 测试集合位于 `postman/` 目录，可直接导入使用。
 
+### Spring Cloud（Nacos 微服务）
+
+本项目基于 Spring Cloud Alibaba 接入 Nacos，作为单个微服务（`blog-service`）注册到 Nacos 注册中心，数据源等配置由 Nacos 配置中心统一管理。
+
+#### 版本矩阵
+
+| 组件 | 版本 | 说明 |
+|------|------|------|
+| Spring Boot | 3.5.7 | 基础框架 |
+| Spring Cloud | 2025.0.0 | 适配 Boot 3.5.x |
+| Spring Cloud Alibaba | 2025.0.0.0 | 适配 Spring Cloud 2025.0.0 |
+| Nacos Server | 3.0.3 | 注册中心 + 配置中心 |
+
+#### 启动 Nacos
+
+```bash
+# Windows standalone 模式
+startup.cmd -m standalone
+
+# 默认地址 http://localhost:8848/nacos，账号/密码 nacos/nacos
+```
+
+#### 创建 Nacos 配置
+
+在 Nacos 控制台 → 配置管理 → 配置列表，创建配置：
+- **Data ID**：`blog-service-dev.yaml`
+- **Group**：`DEFAULT_GROUP`
+- **内容**：数据源 + MyBatis Plus + SQL 初始化配置（见下方）
+
+```yaml
+spring:
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/blog_db?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password:
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+```
+
+> `application.yml` 中 `spring.config.import: optional:nacos:blog-service-dev.yaml` 会从 Nacos 拉取此配置。`optional:` 前缀表示 Nacos 不可用时不阻断启动（用本地兜底配置）。修改 Nacos 中的配置可动态刷新，无需重启服务。
+
+#### 启动微服务
+
+```bash
+mvn spring-boot:run
+```
+
+启动后日志应出现 `Nacos Discovery: register` 注册信息。Nacos 控制台 → 服务管理 → 服务列表可见 `blog-service` 实例（端口 8081）。
+
+```bash
+# 验证业务接口（端口改为 8081）
+curl http://localhost:8081/api/roles
+```
+
 ### 依赖
 - spring-boot-starter-web
+- spring-cloud-starter-alibaba-nacos-discovery
+- spring-cloud-starter-alibaba-nacos-config
 - fastjson
 - commons-lang3
-- mybatis-spring-boot-starter
-- spring-boot-starter-data-redis
+- mybatis-plus-boot-starter
+- druid-spring-boot-3-starter
 - mysql-connector-j
 - spring-boot-starter-tomcat
 - junit
