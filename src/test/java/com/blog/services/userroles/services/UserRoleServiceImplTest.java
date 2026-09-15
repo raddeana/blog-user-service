@@ -1,14 +1,13 @@
 package com.blog.services.userroles.services;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.blog.services.roles.mappers.RoleMapper;
-import com.blog.services.roles.models.Role;
+import com.blog.services.common.Result;
+import com.blog.services.feign.RoleFeignClient;
+import com.blog.services.feign.UserFeignClient;
 import com.blog.services.roles.models.dto.RoleDTO;
-import com.blog.services.roles.services.RoleService;
 import com.blog.services.userroles.mappers.UserRoleMapper;
 import com.blog.services.userroles.models.UserRole;
 import com.blog.services.users.models.dto.UserDTO;
-import com.blog.services.users.services.UserService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -25,6 +24,8 @@ import static org.mockito.Mockito.*;
 
 /**
  * 用户-角色关联服务单元测试
+ * <p>
+ * Mock Feign 客户端（UserFeignClient / RoleFeignClient），替代直接 Mock Service/Mapper。
  */
 @ExtendWith(MockitoExtension.class)
 class UserRoleServiceImplTest {
@@ -33,10 +34,10 @@ class UserRoleServiceImplTest {
     private UserRoleMapper userRoleMapper;
 
     @Mock
-    private RoleMapper roleMapper;
+    private UserFeignClient userFeignClient;
 
     @Mock
-    private UserService userService;
+    private RoleFeignClient roleFeignClient;
 
     @InjectMocks
     private UserRoleServiceImpl userRoleService;
@@ -60,16 +61,16 @@ class UserRoleServiceImplTest {
         rel2.setUserId(1L);
         rel2.setRoleId(20L);
 
-        Role role1 = new Role();
+        RoleDTO role1 = new RoleDTO();
         role1.setId(10L);
         role1.setRoleName("管理员");
-        Role role2 = new Role();
+        RoleDTO role2 = new RoleDTO();
         role2.setId(20L);
         role2.setRoleName("编辑");
 
         when(userRoleMapper.selectList(any())).thenReturn(Arrays.asList(rel1, rel2));
-        when(roleMapper.selectById(10L)).thenReturn(role1);
-        when(roleMapper.selectById(20L)).thenReturn(role2);
+        when(roleFeignClient.getRoleById(10L)).thenReturn(Result.success(role1));
+        when(roleFeignClient.getRoleById(20L)).thenReturn(Result.success(role2));
 
         List<RoleDTO> result = userRoleService.getUserRoles(1L);
 
@@ -80,13 +81,13 @@ class UserRoleServiceImplTest {
 
     @Test
     void getUserRoles_roleDeleted() {
-        // 关联存在但角色已被删除，应跳过
+        // 关联存在但角色已被删除，Feign 返回 404，应跳过
         UserRole rel = new UserRole();
         rel.setUserId(1L);
         rel.setRoleId(99L);
 
         when(userRoleMapper.selectList(any())).thenReturn(Collections.singletonList(rel));
-        when(roleMapper.selectById(99L)).thenReturn(null);
+        when(roleFeignClient.getRoleById(99L)).thenReturn(Result.notFound("角色不存在"));
 
         List<RoleDTO> result = userRoleService.getUserRoles(1L);
 
@@ -98,17 +99,17 @@ class UserRoleServiceImplTest {
     void assignRoles_success() {
         UserDTO user = new UserDTO();
         user.setId(1L);
-        when(userService.getUserById(1L)).thenReturn(user);
+        when(userFeignClient.getUserById(1L)).thenReturn(Result.success(user));
 
-        Role role1 = new Role();
+        RoleDTO role1 = new RoleDTO();
         role1.setId(10L);
         role1.setRoleName("管理员");
-        Role role2 = new Role();
+        RoleDTO role2 = new RoleDTO();
         role2.setId(20L);
         role2.setRoleName("编辑");
 
-        when(roleMapper.selectById(10L)).thenReturn(role1);
-        when(roleMapper.selectById(20L)).thenReturn(role2);
+        when(roleFeignClient.getRoleById(10L)).thenReturn(Result.success(role1));
+        when(roleFeignClient.getRoleById(20L)).thenReturn(Result.success(role2));
         // 不存在关联
         when(userRoleMapper.selectCount(any())).thenReturn(0L);
         when(userRoleMapper.insert(any(UserRole.class))).thenReturn(1);
@@ -119,8 +120,6 @@ class UserRoleServiceImplTest {
         UserRole rel2 = new UserRole();
         rel2.setRoleId(20L);
         when(userRoleMapper.selectList(any())).thenReturn(Arrays.asList(rel1, rel2));
-        when(roleMapper.selectById(10L)).thenReturn(role1);
-        when(roleMapper.selectById(20L)).thenReturn(role2);
 
         List<RoleDTO> result = userRoleService.assignRoles(1L, Arrays.asList(10L, 20L));
 
@@ -130,7 +129,7 @@ class UserRoleServiceImplTest {
 
     @Test
     void assignRoles_userNotFound() {
-        when(userService.getUserById(999L)).thenReturn(null);
+        when(userFeignClient.getUserById(999L)).thenReturn(Result.notFound("用户不存在"));
 
         assertThrows(IllegalArgumentException.class, () ->
                 userRoleService.assignRoles(999L, Arrays.asList(10L)));
@@ -140,10 +139,10 @@ class UserRoleServiceImplTest {
     void assignRoles_roleNotFound_filteredOut() {
         UserDTO user = new UserDTO();
         user.setId(1L);
-        when(userService.getUserById(1L)).thenReturn(user);
+        when(userFeignClient.getUserById(1L)).thenReturn(Result.success(user));
 
-        // 角色不存在，应跳过不报错
-        when(roleMapper.selectById(999L)).thenReturn(null);
+        // 角色不存在，Feign 返回 404，应跳过不报错
+        when(roleFeignClient.getRoleById(999L)).thenReturn(Result.notFound("角色不存在"));
         when(userRoleMapper.selectList(any())).thenReturn(Collections.emptyList());
 
         List<RoleDTO> result = userRoleService.assignRoles(1L, Collections.singletonList(999L));
@@ -157,11 +156,11 @@ class UserRoleServiceImplTest {
     void assignRoles_alreadyAssociated_skipped() {
         UserDTO user = new UserDTO();
         user.setId(1L);
-        when(userService.getUserById(1L)).thenReturn(user);
+        when(userFeignClient.getUserById(1L)).thenReturn(Result.success(user));
 
-        Role role = new Role();
+        RoleDTO role = new RoleDTO();
         role.setId(10L);
-        when(roleMapper.selectById(10L)).thenReturn(role);
+        when(roleFeignClient.getRoleById(10L)).thenReturn(Result.success(role));
         // 已存在关联，应跳过 insert
         when(userRoleMapper.selectCount(any())).thenReturn(1L);
 

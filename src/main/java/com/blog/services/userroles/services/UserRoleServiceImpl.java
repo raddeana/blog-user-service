@@ -1,12 +1,12 @@
 package com.blog.services.userroles.services;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.blog.services.roles.mappers.RoleMapper;
-import com.blog.services.roles.models.Role;
+import com.blog.services.common.Result;
+import com.blog.services.feign.RoleFeignClient;
+import com.blog.services.feign.UserFeignClient;
 import com.blog.services.roles.models.dto.RoleDTO;
 import com.blog.services.userroles.mappers.UserRoleMapper;
 import com.blog.services.userroles.models.UserRole;
-import com.blog.services.users.services.UserService;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
@@ -15,6 +15,9 @@ import java.util.List;
 
 /**
  * 用户-角色关联服务实现类
+ * <p>
+ * 通过 Feign 客户端调用用户服务和角色服务，替代直接注入 Service/Mapper。
+ * 未来拆分为独立微服务时，只需修改 @FeignClient(name=...) 即可。
  */
 @Service
 public class UserRoleServiceImpl implements UserRoleService {
@@ -23,10 +26,10 @@ public class UserRoleServiceImpl implements UserRoleService {
     private UserRoleMapper userRoleMapper;
 
     @Resource
-    private RoleMapper roleMapper;
+    private UserFeignClient userFeignClient;
 
     @Resource
-    private UserService userService;
+    private RoleFeignClient roleFeignClient;
 
     @Override
     public List<RoleDTO> getUserRoles(Long userId) {
@@ -34,9 +37,9 @@ public class UserRoleServiceImpl implements UserRoleService {
         List<UserRole> relations = userRoleMapper.selectList(
                 new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId));
         for (UserRole relation : relations) {
-            Role role = roleMapper.selectById(relation.getRoleId());
-            if (role != null) {
-                result.add(convertToDTO(role));
+            Result<RoleDTO> roleResult = roleFeignClient.getRoleById(relation.getRoleId());
+            if (roleResult != null && roleResult.getCode() == 200 && roleResult.getData() != null) {
+                result.add(roleResult.getData());
             }
         }
         return result;
@@ -44,13 +47,15 @@ public class UserRoleServiceImpl implements UserRoleService {
 
     @Override
     public List<RoleDTO> assignRoles(Long userId, List<Long> roleIds) {
-        // 校验用户存在
-        if (userService.getUserById(userId) == null) {
+        // 通过 Feign 校验用户存在
+        Result<?> userResult = userFeignClient.getUserById(userId);
+        if (userResult == null || userResult.getCode() != 200 || userResult.getData() == null) {
             throw new IllegalArgumentException("用户不存在，ID: " + userId);
         }
         for (Long roleId : roleIds) {
-            // 校验角色存在
-            if (roleMapper.selectById(roleId) == null) {
+            // 通过 Feign 校验角色存在
+            Result<RoleDTO> roleResult = roleFeignClient.getRoleById(roleId);
+            if (roleResult == null || roleResult.getCode() != 200 || roleResult.getData() == null) {
                 continue;
             }
             // 已存在关联则跳过（唯一约束兜底）
@@ -76,17 +81,5 @@ public class UserRoleServiceImpl implements UserRoleService {
                         .eq(UserRole::getUserId, userId)
                         .eq(UserRole::getRoleId, roleId));
         return rows > 0;
-    }
-
-    private RoleDTO convertToDTO(Role role) {
-        RoleDTO dto = new RoleDTO();
-        dto.setId(role.getId());
-        dto.setRoleName(role.getRoleName());
-        dto.setRoleCode(role.getRoleCode());
-        dto.setDescription(role.getDescription());
-        dto.setStatus(role.getStatus());
-        dto.setCreateTime(role.getCreateTime());
-        dto.setUpdateTime(role.getUpdateTime());
-        return dto;
     }
 }

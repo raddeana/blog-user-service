@@ -1,12 +1,12 @@
 package com.blog.services.rolepermissions.services;
 
-import com.blog.services.permissions.mappers.PermissionMapper;
-import com.blog.services.permissions.models.Permission;
+import com.blog.services.common.Result;
+import com.blog.services.feign.PermissionFeignClient;
+import com.blog.services.feign.RoleFeignClient;
 import com.blog.services.permissions.models.dto.PermissionDTO;
-import com.blog.services.roles.models.dto.RoleDTO;
-import com.blog.services.roles.services.RoleService;
 import com.blog.services.rolepermissions.mappers.RolePermissionMapper;
 import com.blog.services.rolepermissions.models.RolePermission;
+import com.blog.services.roles.models.dto.RoleDTO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -23,6 +23,8 @@ import static org.mockito.Mockito.*;
 
 /**
  * 角色-权限关联服务单元测试
+ * <p>
+ * Mock Feign 客户端（RoleFeignClient / PermissionFeignClient），替代直接 Mock Service/Mapper。
  */
 @ExtendWith(MockitoExtension.class)
 class RolePermissionServiceImplTest {
@@ -31,10 +33,10 @@ class RolePermissionServiceImplTest {
     private RolePermissionMapper rolePermissionMapper;
 
     @Mock
-    private PermissionMapper permissionMapper;
+    private RoleFeignClient roleFeignClient;
 
     @Mock
-    private RoleService roleService;
+    private PermissionFeignClient permissionFeignClient;
 
     @InjectMocks
     private RolePermissionServiceImpl rolePermissionService;
@@ -58,16 +60,16 @@ class RolePermissionServiceImplTest {
         rel2.setRoleId(1L);
         rel2.setPermissionId(20L);
 
-        Permission perm1 = new Permission();
+        PermissionDTO perm1 = new PermissionDTO();
         perm1.setId(10L);
         perm1.setPermissionName("文章查看");
-        Permission perm2 = new Permission();
+        PermissionDTO perm2 = new PermissionDTO();
         perm2.setId(20L);
         perm2.setPermissionName("文章发布");
 
         when(rolePermissionMapper.selectList(any())).thenReturn(Arrays.asList(rel1, rel2));
-        when(permissionMapper.selectById(10L)).thenReturn(perm1);
-        when(permissionMapper.selectById(20L)).thenReturn(perm2);
+        when(permissionFeignClient.getPermissionById(10L)).thenReturn(Result.success(perm1));
+        when(permissionFeignClient.getPermissionById(20L)).thenReturn(Result.success(perm2));
 
         List<PermissionDTO> result = rolePermissionService.getRolePermissions(1L);
 
@@ -83,7 +85,7 @@ class RolePermissionServiceImplTest {
         rel.setPermissionId(99L);
 
         when(rolePermissionMapper.selectList(any())).thenReturn(Collections.singletonList(rel));
-        when(permissionMapper.selectById(99L)).thenReturn(null);
+        when(permissionFeignClient.getPermissionById(99L)).thenReturn(Result.notFound("权限不存在"));
 
         List<PermissionDTO> result = rolePermissionService.getRolePermissions(1L);
 
@@ -95,17 +97,17 @@ class RolePermissionServiceImplTest {
     void assignPermissions_success() {
         RoleDTO role = new RoleDTO();
         role.setId(1L);
-        when(roleService.getRoleById(1L)).thenReturn(role);
+        when(roleFeignClient.getRoleById(1L)).thenReturn(Result.success(role));
 
-        Permission perm1 = new Permission();
+        PermissionDTO perm1 = new PermissionDTO();
         perm1.setId(10L);
         perm1.setPermissionName("查看");
-        Permission perm2 = new Permission();
+        PermissionDTO perm2 = new PermissionDTO();
         perm2.setId(20L);
         perm2.setPermissionName("发布");
 
-        when(permissionMapper.selectById(10L)).thenReturn(perm1);
-        when(permissionMapper.selectById(20L)).thenReturn(perm2);
+        when(permissionFeignClient.getPermissionById(10L)).thenReturn(Result.success(perm1));
+        when(permissionFeignClient.getPermissionById(20L)).thenReturn(Result.success(perm2));
         when(rolePermissionMapper.selectCount(any())).thenReturn(0L);
         when(rolePermissionMapper.insert(any(RolePermission.class))).thenReturn(1);
 
@@ -123,7 +125,7 @@ class RolePermissionServiceImplTest {
 
     @Test
     void assignPermissions_roleNotFound() {
-        when(roleService.getRoleById(999L)).thenReturn(null);
+        when(roleFeignClient.getRoleById(999L)).thenReturn(Result.notFound("角色不存在"));
 
         assertThrows(IllegalArgumentException.class, () ->
                 rolePermissionService.assignPermissions(999L, Arrays.asList(10L)));
@@ -133,9 +135,9 @@ class RolePermissionServiceImplTest {
     void assignPermissions_permissionNotFound_filteredOut() {
         RoleDTO role = new RoleDTO();
         role.setId(1L);
-        when(roleService.getRoleById(1L)).thenReturn(role);
+        when(roleFeignClient.getRoleById(1L)).thenReturn(Result.success(role));
 
-        when(permissionMapper.selectById(999L)).thenReturn(null);
+        when(permissionFeignClient.getPermissionById(999L)).thenReturn(Result.notFound("权限不存在"));
         when(rolePermissionMapper.selectList(any())).thenReturn(Collections.emptyList());
 
         List<PermissionDTO> result = rolePermissionService.assignPermissions(1L, Collections.singletonList(999L));
@@ -149,12 +151,12 @@ class RolePermissionServiceImplTest {
     void assignPermissions_alreadyAssociated_skipped() {
         RoleDTO role = new RoleDTO();
         role.setId(1L);
-        when(roleService.getRoleById(1L)).thenReturn(role);
+        when(roleFeignClient.getRoleById(1L)).thenReturn(Result.success(role));
 
-        Permission perm = new Permission();
+        PermissionDTO perm = new PermissionDTO();
         perm.setId(10L);
         perm.setPermissionName("查看");
-        when(permissionMapper.selectById(10L)).thenReturn(perm);
+        when(permissionFeignClient.getPermissionById(10L)).thenReturn(Result.success(perm));
         when(rolePermissionMapper.selectCount(any())).thenReturn(1L);
 
         RolePermission rel = new RolePermission();

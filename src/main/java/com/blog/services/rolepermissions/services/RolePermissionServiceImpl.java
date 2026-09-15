@@ -1,12 +1,12 @@
 package com.blog.services.rolepermissions.services;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.blog.services.permissions.mappers.PermissionMapper;
-import com.blog.services.permissions.models.Permission;
+import com.blog.services.common.Result;
+import com.blog.services.feign.PermissionFeignClient;
+import com.blog.services.feign.RoleFeignClient;
 import com.blog.services.permissions.models.dto.PermissionDTO;
 import com.blog.services.rolepermissions.mappers.RolePermissionMapper;
 import com.blog.services.rolepermissions.models.RolePermission;
-import com.blog.services.roles.services.RoleService;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
@@ -15,6 +15,9 @@ import java.util.List;
 
 /**
  * 角色-权限关联服务实现类
+ * <p>
+ * 通过 Feign 客户端调用角色服务和权限服务，替代直接注入 Service/Mapper。
+ * 未来拆分为独立微服务时，只需修改 @FeignClient(name=...) 即可。
  */
 @Service
 public class RolePermissionServiceImpl implements RolePermissionService {
@@ -23,10 +26,10 @@ public class RolePermissionServiceImpl implements RolePermissionService {
     private RolePermissionMapper rolePermissionMapper;
 
     @Resource
-    private PermissionMapper permissionMapper;
+    private RoleFeignClient roleFeignClient;
 
     @Resource
-    private RoleService roleService;
+    private PermissionFeignClient permissionFeignClient;
 
     @Override
     public List<PermissionDTO> getRolePermissions(Long roleId) {
@@ -34,9 +37,9 @@ public class RolePermissionServiceImpl implements RolePermissionService {
         List<RolePermission> relations = rolePermissionMapper.selectList(
                 new LambdaQueryWrapper<RolePermission>().eq(RolePermission::getRoleId, roleId));
         for (RolePermission relation : relations) {
-            Permission permission = permissionMapper.selectById(relation.getPermissionId());
-            if (permission != null) {
-                result.add(convertToDTO(permission));
+            Result<PermissionDTO> permResult = permissionFeignClient.getPermissionById(relation.getPermissionId());
+            if (permResult != null && permResult.getCode() == 200 && permResult.getData() != null) {
+                result.add(permResult.getData());
             }
         }
         return result;
@@ -44,13 +47,15 @@ public class RolePermissionServiceImpl implements RolePermissionService {
 
     @Override
     public List<PermissionDTO> assignPermissions(Long roleId, List<Long> permissionIds) {
-        // 校验角色存在
-        if (roleService.getRoleById(roleId) == null) {
+        // 通过 Feign 校验角色存在
+        Result<?> roleResult = roleFeignClient.getRoleById(roleId);
+        if (roleResult == null || roleResult.getCode() != 200 || roleResult.getData() == null) {
             throw new IllegalArgumentException("角色不存在，ID: " + roleId);
         }
         for (Long permissionId : permissionIds) {
-            // 校验权限存在
-            if (permissionMapper.selectById(permissionId) == null) {
+            // 通过 Feign 校验权限存在
+            Result<PermissionDTO> permResult = permissionFeignClient.getPermissionById(permissionId);
+            if (permResult == null || permResult.getCode() != 200 || permResult.getData() == null) {
                 continue;
             }
             // 已存在关联则跳过（唯一约束兜底）
@@ -76,19 +81,5 @@ public class RolePermissionServiceImpl implements RolePermissionService {
                         .eq(RolePermission::getRoleId, roleId)
                         .eq(RolePermission::getPermissionId, permissionId));
         return rows > 0;
-    }
-
-    private PermissionDTO convertToDTO(Permission permission) {
-        PermissionDTO dto = new PermissionDTO();
-        dto.setId(permission.getId());
-        dto.setPermissionName(permission.getPermissionName());
-        dto.setPermissionCode(permission.getPermissionCode());
-        dto.setResourceType(permission.getResourceType());
-        dto.setResourcePath(permission.getResourcePath());
-        dto.setDescription(permission.getDescription());
-        dto.setStatus(permission.getStatus());
-        dto.setCreateTime(permission.getCreateTime());
-        dto.setUpdateTime(permission.getUpdateTime());
-        return dto;
     }
 }
